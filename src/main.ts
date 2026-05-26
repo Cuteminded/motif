@@ -16,6 +16,9 @@ class MotifApp {
   private searchBtn!: HTMLButtonElement;
   private songInput!: HTMLInputElement;
   private status!: HTMLElement;
+
+  private customUrlBtn!: HTMLButtonElement;
+  private customUrlInput!: HTMLInputElement;
   
   private resultsSection!: HTMLElement;
   private resultsBody!: HTMLElement;
@@ -102,6 +105,10 @@ class MotifApp {
   private initializeUI(): void {
     this.searchBtn = document.getElementById('searchBtn') as HTMLButtonElement;
     this.songInput = document.getElementById('songInput') as HTMLInputElement;
+
+    this.customUrlBtn = document.getElementById('customUrlBtn') as HTMLButtonElement;
+    this.customUrlInput = document.getElementById('customUrlInput') as HTMLInputElement;
+
     this.status = document.getElementById('status')!;
 
     this.resultsSection = document.getElementById('resultsSection')!;
@@ -167,6 +174,14 @@ class MotifApp {
     this.songInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
         doSearch();
+      }
+    });
+
+    this.customUrlBtn.addEventListener('click', () => void this.selectResultByMIDIUrl());
+
+    this.customUrlInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        void this.selectResultByMIDIUrl();
       }
     });
 
@@ -458,6 +473,49 @@ class MotifApp {
         // ignore
       }
 
+    } catch (error) {
+      this.updateStatus(`Load error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  public async selectResultByMIDIUrl(): Promise<void> {
+    // Similar to selectResult but for direct URL input. Will not have search result metadata.
+    this.handleMotifStop();
+    this.soundfontPlayer?.stop();
+    this.stopPreview();
+    this.hasGenerated = false;
+
+    try {
+      //New
+      const url = this.customUrlInput.value.trim();
+      if (!url) {
+        this.updateStatus(`Load error: Please enter a MIDI file URL.`);
+        return;
+      }
+      const midiBuffer = await this.midiService.fetchMIDI(url);
+      if (!midiBuffer) {
+        throw new Error('Failed to fetch MIDI file');
+      }
+      const events = MIDIParser.parseMIDI(midiBuffer);
+      const metadata = MIDIParser.getMIDIInfo(midiBuffer);
+      const actualDuration = metadata.duration || 0;
+      this.currentMIDI = { events, metadata: { ...metadata, duration: actualDuration } };
+
+      this.selectedTitle.textContent = 'Custom MIDI';
+      this.selectedMeta.textContent = `Source: ${url}`;
+      this.updateEmbedSnippet('Custom MIDI');
+      this.updateIOSAudioBanner();
+      
+      this.playerSection.classList.add('visible');
+      this.resultsSection.classList.add('collapsed');
+      this.enablePlayerControls();
+      this.updateStatus('');
+      this.setState('selected');
+      try {
+        this.playerSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch {
+        // ignore
+      }
     } catch (error) {
       this.updateStatus(`Load error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
