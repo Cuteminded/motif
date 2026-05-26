@@ -350,6 +350,57 @@
             opacity: 0.35;
         }
 
+        .local-drop-zone {
+            margin: calc(var(--spacing-unit) * 2) 0 0 0;
+            padding: calc(var(--spacing-unit) * 2);
+            border: var(--pixel-border) dashed var(--gb-dark);
+            background: var(--gb-lightest);
+            color: var(--gb-darkest);
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 120ms ease, border-color 120ms ease;
+        }
+
+        .local-drop-zone:hover,
+        .local-drop-zone.drag-over {
+            background: #fff;
+            border-color: var(--gb-darkest);
+        }
+
+        .local-drop-zone:focus-visible {
+            outline: 2px solid var(--gb-darkest);
+            outline-offset: 2px;
+        }
+
+        .local-drop-zone p {
+            margin: 0;
+            font-size: 8px;
+            line-height: 2;
+        }
+
+        .local-drop-zone .drop-hint {
+            margin-top: 6px;
+            color: var(--gb-medium);
+            font-size: 7px;
+        }
+
+        .local-drop-zone .browse-link {
+            background: none;
+            border: none;
+            box-shadow: none;
+            color: var(--gb-darkest);
+            font-size: 8px;
+            padding: 0;
+            text-decoration: underline;
+            text-transform: none;
+            cursor: pointer;
+        }
+
+        .local-drop-zone .browse-link:hover:not(:disabled) {
+            color: var(--gb-dark);
+            background: none;
+        }
+
         /* Chunky 8-bit buttons */
         button {
             background: var(--color-surface);
@@ -1154,6 +1205,18 @@
         <div class="controls">
             <input type="text" id="customUrlInput" placeholder="Paste MIDI URL here…" />
             <button id="customUrlBtn" class="primary">Get from URL</button>
+        </div>
+
+        <div
+            id="localDropZone"
+            class="local-drop-zone"
+            role="button"
+            tabindex="0"
+            aria-label="Drop a local MIDI file or browse to select"
+        >
+            <input id="localMidiInput" type="file" accept=".mid,.midi,audio/midi,audio/x-midi" style="display:none;" />
+            <p>Drop a local MIDI file here, or <button id="localMidiBrowseBtn" type="button" class="browse-link">browse</button></p>
+            <p class="drop-hint">Supports .mid and .midi files</p>
         </div>
 
         <div id="status">Ready. Search any song to make a Game Boy version.</div>

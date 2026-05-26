@@ -19,6 +19,10 @@ class MotifApp {
 
   private customUrlBtn!: HTMLButtonElement;
   private customUrlInput!: HTMLInputElement;
+
+  private localDropZone!: HTMLElement;
+  private localMidiInput!: HTMLInputElement;
+  private localMidiBrowseBtn!: HTMLButtonElement;
   
   private resultsSection!: HTMLElement;
   private resultsBody!: HTMLElement;
@@ -36,6 +40,7 @@ class MotifApp {
   private previewState!: HTMLElement;
 
   private isPreviewPlaying = false;
+  private localMidiFile = false;
   private hasGenerated = false;
   private isMotifPlaying = false;
   private motifResumeProgress = 0;
@@ -108,6 +113,10 @@ class MotifApp {
 
     this.customUrlBtn = document.getElementById('customUrlBtn') as HTMLButtonElement;
     this.customUrlInput = document.getElementById('customUrlInput') as HTMLInputElement;
+
+    this.localDropZone = document.getElementById('localDropZone')!;
+    this.localMidiInput = document.getElementById('localMidiInput') as HTMLInputElement;
+    this.localMidiBrowseBtn = document.getElementById('localMidiBrowseBtn') as HTMLButtonElement;
 
     this.status = document.getElementById('status')!;
 
@@ -185,6 +194,46 @@ class MotifApp {
       }
     });
 
+    this.localMidiBrowseBtn.addEventListener('click', () => {
+      this.localMidiInput.click();
+    });
+
+    this.localMidiInput.addEventListener('change', () => {
+      void this.handleLocalMIDISelection(this.localMidiInput.files);
+      // Reset so selecting the same file twice still triggers change.
+      this.localMidiInput.value = '';
+    });
+
+    this.localDropZone.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).id === 'localMidiBrowseBtn') return;
+      this.localMidiInput.click();
+    });
+
+    this.localDropZone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        this.localMidiInput.click();
+      }
+    });
+
+    this.localDropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      this.localDropZone.classList.add('drag-over');
+    });
+
+    this.localDropZone.addEventListener('dragleave', (e) => {
+      const related = e.relatedTarget as Node | null;
+      if (!related || !this.localDropZone.contains(related)) {
+        this.localDropZone.classList.remove('drag-over');
+      }
+    });
+
+    this.localDropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      this.localDropZone.classList.remove('drag-over');
+      void this.handleLocalMIDISelection(e.dataTransfer?.files ?? null);
+    });
+
     // Preview MIDI (verification only) — controlled from results table rows
 
     // Motif
@@ -240,6 +289,7 @@ class MotifApp {
     this.stopPreview();
     this.handleMotifStop();
     this.hasGenerated = false;
+    this.localMidiFile = false;
     this.isMotifPlaying = false;
     this.motifResumeProgress = 0;
     this.currentMIDI = null;
@@ -419,6 +469,7 @@ class MotifApp {
     this.soundfontPlayer?.stop();
     this.stopPreview();
     this.hasGenerated = false;
+    this.localMidiFile = false;
 
     this.selectedResultIndex = index;
     const result = this.searchResults[index];
@@ -443,7 +494,7 @@ class MotifApp {
       const metadata = result.parsed || MIDIParser.getMIDIInfo(midiBuffer);
 
       // Calculate duration from events if metadata duration is 0 or missing
-      let actualDuration = metadata.duration || metadata.durationSec || 0;
+      let actualDuration = metadata.duration || 0;
       if (actualDuration === 0 && events.length > 0) {
         // Calculate duration from the last event
         actualDuration = Math.max(...events.map(e => e.time + e.duration));
@@ -484,9 +535,8 @@ class MotifApp {
     this.soundfontPlayer?.stop();
     this.stopPreview();
     this.hasGenerated = false;
-
+    this.localMidiFile = false;
     try {
-      //New
       const url = this.customUrlInput.value.trim();
       if (!url) {
         this.updateStatus(`Load error: Please enter a MIDI file URL.`);
@@ -513,7 +563,62 @@ class MotifApp {
       try {
         this.updateStatus('MIDI loaded from URL. You can now preview or generate a motif.');
         this.playerSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        this.resultsSection.classList.remove('visible');
+      } catch {
+        // ignore
+      }
+    } catch (error) {
+      this.updateStatus(`Load error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private async handleLocalMIDISelection(files: FileList | null): Promise<void> {
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    const lowerName = file.name.toLowerCase();
+    const isMidiName = lowerName.endsWith('.mid') || lowerName.endsWith('.midi');
+    const isMidiType = file.type === 'audio/midi' || file.type === 'audio/x-midi';
+
+    if (!isMidiName && !isMidiType) {
+      this.updateStatus('Please select a .mid or .midi file.');
+      return;
+    }
+
+    this.handleMotifStop();
+    this.soundfontPlayer?.stop();
+    this.stopPreview();
+    this.hasGenerated = false;
+    this.localMidiFile = true;
+
+    this.updateStatus('Loading local MIDI…');
+    this.disablePlayerControls();
+
+    try {
+      const midiBuffer = await file.arrayBuffer();
+      const events = MIDIParser.parseMIDI(midiBuffer);
+      const metadata = MIDIParser.getMIDIInfo(midiBuffer);
+
+      let actualDuration = metadata.duration || 0;
+      if (actualDuration === 0 && events.length > 0) {
+        actualDuration = Math.max(...events.map(e => e.time + e.duration));
+      }
+
+      this.currentMIDI = { events, metadata: { ...metadata, duration: actualDuration } };
+      const localTitle = this.cleanSongTitle(file.name.replace(/\.(mid|midi)$/i, ''));
+      this.selectedTitle.textContent = localTitle;
+      this.selectedMeta.textContent = `Source: Local file (${this.formatFileSize(file.size)})`;
+
+      this.updateEmbedSnippet(localTitle);
+      this.updateIOSAudioBanner();
+
+      this.playerSection.classList.add('visible');
+      this.enablePlayerControls();
+      this.updateStatus('Local MIDI loaded. You can now preview or generate a motif.');
+      this.setState('selected');
+
+      try {
+        this.updateStatus('Local MIDI loaded. You can now preview or generate a motif.');
+        this.playerSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } catch {
         // ignore
       }
@@ -712,6 +817,18 @@ class MotifApp {
     return this.titleCase(s);
   }
 
+  private formatFileSize(bytes: number): string {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB'];
+    let size = bytes;
+    let unitIdx = 0;
+    while (size >= 1024 && unitIdx < units.length - 1) {
+      size /= 1024;
+      unitIdx += 1;
+    }
+    return `${size >= 10 || unitIdx === 0 ? Math.round(size) : size.toFixed(1)} ${units[unitIdx]}`;
+  }
+
   private enablePlayerControls(): void {
     this.motifBtn.disabled = false;
     this.copyLinkBtn.disabled = this.currentMIDI == null;
@@ -887,10 +1004,11 @@ class MotifApp {
     this.playerSection.classList.toggle('visible', hasSelection);
 
     // share buttons only after generation
-    this.copyLinkBtn.style.display = state === 'generated' ? 'inline-block' : 'none';
-    this.copyLinkBtn.disabled = !(state === 'generated' && this.hasGenerated);
-    this.shareToXBtn.style.display = state === 'generated' ? 'inline-block' : 'none';
-    this.shareToXBtn.disabled = !(state === 'generated' && this.hasGenerated);
+    const canShare = state === 'generated' && this.hasGenerated && !this.localMidiFile;
+    this.copyLinkBtn.style.display = canShare ? 'inline-block' : 'none';
+    this.copyLinkBtn.disabled = !canShare;
+    this.shareToXBtn.style.display = canShare ? 'inline-block' : 'none';
+    this.shareToXBtn.disabled = !canShare;
     // Hide share fallback when state changes
     this.shareFallback.style.display = 'none';
 
