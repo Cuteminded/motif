@@ -507,12 +507,13 @@ class MotifApp {
       this.updateIOSAudioBanner();
       
       this.playerSection.classList.add('visible');
-      this.resultsSection.classList.add('collapsed');
       this.enablePlayerControls();
       this.updateStatus('');
       this.setState('selected');
       try {
+        this.updateStatus('MIDI loaded from URL. You can now preview or generate a motif.');
         this.playerSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        this.resultsSection.classList.remove('visible');
       } catch {
         // ignore
       }
